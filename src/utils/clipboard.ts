@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { basename, join } from "path";
 import { nanoid } from "nanoid";
 import { logger } from "./logger";
+import { spawn, which } from "./runtime";
 
 export interface ClipImage {
   mime: string;
@@ -15,7 +16,7 @@ async function run(
   cmd: string[],
   stdinBytes?: Uint8Array,
 ): Promise<{ code: number; stdout: Uint8Array }> {
-  const proc = Bun.spawn(cmd, {
+  const proc = spawn(cmd, {
     stdin: stdinBytes ? "pipe" : "ignore",
     stdout: "pipe",
     stderr: "ignore",
@@ -145,7 +146,7 @@ export async function readClipboardImage(): Promise<ClipImage | null> {
 export function clipboardSupported(): boolean {
   const os = platform();
   if (os === "win32" || os === "darwin") return true;
-  return !!Bun.which("xclip") || !!Bun.which("wl-paste");
+  return !!which("xclip") || !!which("wl-paste");
 }
 
 /** Approximate decoded size in bytes. */

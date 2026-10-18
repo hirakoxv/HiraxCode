@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { homedir, platform } from "os";
 import { resolve } from "path";
+import { which } from "@/utils/runtime";
 
 export interface LocalRuntime {
   ollama: { installed: boolean; running: boolean; baseUrl: string };
@@ -23,7 +24,7 @@ async function checkRunning(url: string, timeoutMs = 800): Promise<boolean> {
 
 function whichSafe(bin: string): string | null {
   try {
-    const r = Bun.which(bin);
+    const r = which(bin);
     if (r) return r;
   } catch {}
   return null;

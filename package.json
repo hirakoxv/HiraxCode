@@ -1,20 +1,18 @@
 {
-  "name": "hiraxcode",
-  "version": "0.1.1",
-  "description": "HiraxCode - AI coding agent for the terminal, built for vibe coding",
+  "name": "@hirakoxx/cli",
+  "version": "0.2.0",
+  "description": "HiraxCode - terminal AI agent for coding and ethical hacking (pentest)",
   "type": "module",
   "bin": {
-    "hiraxcode": "bin/hiraxcode.js"
+    "hiraxcode": "dist/index.js"
   },
   "files": [
-    "bin",
-    "src",
-    "tsconfig.json",
-    ".env.example"
+    "dist"
   ],
   "scripts": {
     "dev": "bun run src/index.tsx",
     "start": "bun run src/index.tsx",
+    "build:npm": "bun build src/index.tsx --target node --outdir dist",
     "build": "bun build --compile --minify src/index.tsx --outfile dist/hiraxcode",
     "build:win": "bun build --compile --minify --target=bun-windows-x64 src/index.tsx --outfile dist/hiraxcode-win-x64.exe",
     "build:mac": "bun build --compile --minify --target=bun-darwin-arm64 src/index.tsx --outfile dist/hiraxcode-macos-arm64",
@@ -23,6 +21,7 @@
     "build:all": "bun run build:win && bun run build:mac && bun run build:mac-x64 && bun run build:linux",
     "test": "bun test",
     "typecheck": "bun node_modules/typescript/lib/tsc.js --noEmit",
+    "prepack": "bun run build:npm",
     "prepublishOnly": "bun test && bun run typecheck"
   },
   "keywords": [
@@ -32,7 +31,9 @@
     "cli",
     "vibe-coding",
     "terminal",
-    "ink"
+    "ink",
+    "pentest",
+    "security"
   ],
   "license": "MIT",
   "repository": {
@@ -43,28 +44,27 @@
   "bugs": {
     "url": "https://github.com/hirakoxx/HiraxCode/issues"
   },
-  "dependencies": {
-    "dotenv": "^16.4.7",
-    "ink": "^5.1.0",
-    "ink-spinner": "^5.0.0",
-    "ink-text-input": "^6.0.0",
-    "nanoid": "^5.0.9",
-    "react": "^18.3.1",
-    "string-width": "^7.2.0",
-    "strip-ansi": "^7.1.0",
-    "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.24.1"
-  },
   "devDependencies": {
     "@types/bun": "^1.1.14",
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.18",
+    "dotenv": "^16.4.7",
+    "glob": "^13.0.6",
+    "ink": "^5.1.0",
+    "ink-spinner": "^5.0.0",
     "ink-testing-library": "^4.0.0",
+    "ink-text-input": "^6.0.0",
+    "nanoid": "^5.0.9",
+    "react": "^18.3.1",
     "react-devtools-core": "^4.28.5",
-    "typescript": "^5.7.3"
+    "string-width": "^7.2.0",
+    "strip-ansi": "^7.1.0",
+    "typescript": "^5.7.3",
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.24.1"
   },
   "engines": {
-    "bun": ">=1.1.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"

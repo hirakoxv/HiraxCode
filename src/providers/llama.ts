@@ -3,6 +3,7 @@ import { homedir, platform } from "os";
 import { resolve } from "path";
 import { ensureBinary, LLAMA_SERVER_SPEC } from "@/utils/binaries";
 import { logger } from "@/utils/logger";
+import { findFreePort, sleep, spawn, which } from "@/utils/runtime";
 
 export interface LlamaServerHandle {
   baseUrl: string;
@@ -26,7 +27,7 @@ export function findLlamaBin(bin = "llama-server"): string | null {
     return existsSync(p) ? p : null;
   }
   const exe = platform() === "win32" && !bin.toLowerCase().endsWith(".exe") ? `${bin}.exe` : bin;
-  const found = Bun.which(exe) ?? Bun.which(bin);
+  const found = which(exe) ?? which(bin);
   if (found) return found;
   return null;
 }
@@ -38,16 +39,11 @@ function joinSafe(...parts: (string | undefined)[]): string | undefined {
 }
 
 async function freePort(preferred: number): Promise<number> {
-  for (let port = preferred; port < preferred + 40; port++) {
-    try {
-      const s = Bun.serve({ port, fetch: () => new Response("") });
-      s.stop(true);
-      return port;
-    } catch {
-      // occupied, try next
-    }
+  try {
+    return await findFreePort(preferred);
+  } catch {
+    throw new Error("No free port found for llama.cpp server");
   }
-  throw new Error("No free port found for llama.cpp server");
 }
 
 async function waitForHealth(port: number, timeoutMs = 300_000): Promise<boolean> {
@@ -64,7 +60,7 @@ async function waitForHealth(port: number, timeoutMs = 300_000): Promise<boolean
     } catch {
       // not ready yet
     }
-    await Bun.sleep(500);
+    await sleep(500);
   }
   return false;
 }
@@ -162,7 +158,7 @@ export async function ensureLlamaServer(
 
   const args = buildLlamaServerArgs(bin, port, opts);
 
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
+  const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
 
   if (opts.onLog) {
     void pipeLines(proc.stdout, opts.onLog);
@@ -201,9 +197,10 @@ export function stopLlamaServer(): void {
 }
 
 async function pipeLines(
-  stream: ReadableStream<Uint8Array>,
+  stream: ReadableStream<Uint8Array> | null,
   onLine: (line: string) => void,
 ): Promise<void> {
+  if (!stream) return;
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buf = "";

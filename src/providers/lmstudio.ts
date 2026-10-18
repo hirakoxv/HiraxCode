@@ -1,4 +1,5 @@
 import { logger } from "@/utils/logger";
+import { findFreePort, sleep, spawn, which } from "@/utils/runtime";
 
 export interface LocalProcessHandle {
   baseUrl: string;
@@ -9,17 +10,6 @@ export interface LocalProcessHandle {
 
 let running: LocalProcessHandle | null = null;
 
-async function freePort(preferred: number): Promise<number> {
-  for (let port = preferred; port < preferred + 40; port++) {
-    try {
-      const s = Bun.serve({ port, fetch: () => new Response("") });
-      s.stop(true);
-      return port;
-    } catch {}
-  }
-  throw new Error("No free port found");
-}
-
 async function waitForHealth(baseUrl: string, timeoutMs = 180_000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -27,14 +17,14 @@ async function waitForHealth(baseUrl: string, timeoutMs = 180_000): Promise<bool
       const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(1500) });
       if (res.ok) return true;
     } catch {}
-    await Bun.sleep(500);
+    await sleep(500);
   }
   return false;
 }
 
 function findBin(name: string): string | null {
   try {
-    const r = Bun.which(name) || Bun.which(name + ".exe");
+    const r = which(name) || which(name + ".exe");
     if (r) return r;
   } catch {}
   return null;
@@ -59,12 +49,13 @@ export async function ensureLmStudioRunning(opts: { port?: number; onLog?: (l: s
   if (!bin) {
     throw new Error("LM Studio not found. Install LM Studio or run it manually.");
   }
-  const port = await freePort(opts.port ?? 1234);
-  const proc = Bun.spawn([bin, "--port", String(port)], { stdout: "pipe", stderr: "pipe" });
+  const port = await findFreePort(opts.port ?? 1234);
+  const proc = spawn([bin, "--port", String(port)], { stdout: "pipe", stderr: "pipe" });
   if (opts.onLog) {
     void (async () => {
       const dec = new TextDecoder();
       for (const s of [proc.stdout, proc.stderr]) {
+        if (!s) continue;
         const r = s.getReader();
         try { while (true) { const res = await r.read(); if (res.done) break; opts.onLog!(dec.decode(res.value,{stream:true})); } } catch {}
       }

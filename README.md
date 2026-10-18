@@ -1,9 +1,12 @@
 # HiraxCode
 
+[![npm](https://img.shields.io/npm/v/@hirakoxx/cli.svg?label=%40hirakoxx%2Fcli)](https://www.npmjs.com/package/@hirakoxx/cli)
+[![license](https://img.shields.io/npm/l/@hirakoxx/cli.svg)](https://github.com/hirakoxx/HiraxCode/blob/main/LICENSE)
+
 > An AI coding agent that lives in your terminal, built for **vibe coding**.
 > Multi-provider, local models & **GGUF**, with settings right inside the TUI.
 
-Built with **TypeScript + Bun + Ink** (React for the terminal).
+Built with **TypeScript + Ink** (React for the terminal), shipped as a single self-contained **Node.js** bundle. Bun is only used for development.
 
 ```
 ██╗  ██╗██╗██████╗  █████╗ ██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗
@@ -38,21 +41,45 @@ Temperature controls how random the model's output is: `0` = deterministic and f
 - **Pentest & Security modes** — dedicated security-testing agents: recon (port scan + HTTP probing), enumeration, and read-only code review. See [Security & Pentest](#security--pentest).
 - **Approval system** — dangerous actions ask for `y`/`n` confirmation.
 - **Multi-session** — session sidebar, history persisted to disk.
-- **Single binary** — `bun run build`.
+- **Single-file bundle** — `bun run build:npm` produces one self-contained Node file with **zero dependencies**; `bun run build` produces a native binary.
 
-## Quick Start
+## Install
+
+Requires **Node.js 20 or newer** — nothing else. The package has no dependencies.
 
 ```bash
-npm install          # or: bun install
+npm install -g @hirakoxx/cli@latest
 
-cp .env.example .env # optional — you can also set everything from /settings
+hiraxcode
+```
 
-bun run dev          # run it
+Or run it without installing:
+
+```bash
+npx @hirakoxx/cli@latest
 ```
 
 On first launch, open `/settings` to pick a provider and paste an API key. That's it — start chatting.
 
-Build a binary:
+## Development
+
+Bun is only needed to work on the source.
+
+```bash
+bun install           # or: npm install
+
+cp .env.example .env  # optional — you can also set everything from /settings
+
+bun run dev           # run it from source
+```
+
+Build the published npm bundle — a single self-contained Node file:
+
+```bash
+bun run build:npm     # -> dist/index.js
+```
+
+Build a native binary instead (embeds the Bun runtime, so it needs neither Node nor Bun at runtime):
 
 ```bash
 bun run build        # -> dist/hiraxcode (current platform)
@@ -64,7 +91,7 @@ bun run build:linux  # -> dist/hiraxcode-linux-x64
 bun run build:all    # all of the above
 ```
 
-The binary is self-contained (the Bun runtime is embedded) — just copy it to the target machine, no Bun/Node install required.
+Either artifact is self-contained. The npm bundle needs only Node; the native binary needs nothing at all.
 
 ## Providers
 
@@ -265,7 +292,8 @@ src/
 │                              # Header, Home, StatusBar, CommandMenu,
 │                              # ListPicker, TextField, TextInput,
 │                              # SettingsScreen, HelpScreen, CustomProviderForm
-└── utils/                     # logger, helpers, color, binaries (auto-download),
+└── utils/                     # runtime (Node spawn/which/ports/sleep),
+                               # logger, helpers, color, binaries (auto-download),
                                # clipboard (cross-platform image/file reading)
 ```
 
@@ -276,6 +304,7 @@ Agent flow: **user → streamed answer/thinking → tool call → approval → e
 ```bash
 bun test           # test suite
 bun run typecheck  # typecheck (0 errors)
+bun run build:npm  # build the published Node bundle
 ```
 
 Coverage includes: tools (including `http_request` & `port_scan`), the agent loop, built-in agents (build/plan/pentest/security), OpenAI/Anthropic/Gemini wire formats (against a mock SSE server), image sending for every wire format, vision-model detection, Gemini tool-schema sanitization, approvals, provider errors surfaced in the chat, settings persistence, and UI rendering. No API key required.
@@ -285,7 +314,9 @@ Coverage includes: tools (including `http_request` & `port_scan`), the agent loo
 - **`Raw mode is not supported on the current process.stdin`** — Ink needs an interactive terminal. Run `hiraxcode` directly in a terminal (not through a pipe/CI/`nohup`). If you really must force it, set `HIRAX_FORCE_TTY=1`.
 - **Provider returns `400 INVALID_ARGUMENT` (Gemini) about `additionalProperties` / `type`** — already fixed: tool schemas are normalized to Gemini's `functionDeclarations` format. Update to the latest version.
 - **No response at all** — providers return errors that now show up in the chat as `⚠️ API ...`. Read the message; it's usually a wrong/empty API key or a missing model.
-- **`Cannot find package 'ink'` / missing modules** — in some sandboxes `bun install` fails to extract files. Use `npm install`, then still run via `bun run dev`.
+- **`Cannot find package 'ink'` / missing modules** — only relevant when running from source: run `bun install` (or `npm install`) in the repo. The published npm bundle is fully self-contained and pulls in no dependencies.
+- **`node: command not found` / old Node** — HiraxCode needs **Node.js 20+**. Check with `node -v`. (Bun is not required.)
+- **Installed the old name?** — the `hiraxcode` package is superseded by `@hirakoxx/cli`: `npm uninstall -g hiraxcode && npm i -g @hirakoxx/cli@latest`.
 - **Provider says "no API key"** — open `/settings`, pick the provider, paste the API key.
 - **`API 500: tools param requires --jinja flag` (GGUF)** — handled automatically: HiraxCode runs `llama-server` with `--jinja`. If you set `llama-server args` yourself, don't add `--no-jinja` (or add `--jinja`). Update to the latest version.
 - **`llama-server not found`** — HiraxCode downloads llama.cpp automatically; if that fails (e.g. no internet), install it manually and set **llama-server** in `/settings` to the binary path.

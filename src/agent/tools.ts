@@ -10,9 +10,11 @@ import { dirname, join, relative, resolve } from "path";
 import { platform } from "os";
 import { connect } from "node:net";
 import { lookup } from "node:dns/promises";
+import { globIterate } from "glob";
 import { z } from "zod";
 import type { ToolDefinition, ToolResultPayload } from "@/core/types";
 import { logger } from "@/utils/logger";
+import { spawn, which } from "@/utils/runtime";
 
 /** Resolve a user-supplied path against the working directory. */
 function resolveInCwd(p: string, cwd: string): string {
@@ -130,10 +132,12 @@ export async function globFiles(
   cwd: string,
 ): Promise<ToolResultPayload> {
   try {
-    const glob = new Bun.Glob(args.pattern);
     const limit = args.limit ?? 200;
     const results: string[] = [];
-    for await (const file of glob.scan({ cwd, dot: false })) {
+    // `glob` yields platform-native separators on Windows; normalise to POSIX
+    // so the output matches what the model expects (and the filters below work).
+    for await (const match of globIterate(args.pattern, { cwd, dot: false })) {
+      const file = match.split("\\").join("/");
       if (file.startsWith("node_modules/") || file.startsWith(".git/")) continue;
       results.push(file);
       if (results.length >= limit) break;
@@ -256,14 +260,14 @@ export const runBashTool: ToolDefinition = {
 export function shellArgv(command: string): string[] {
   if (platform() === "win32") {
     // Windows PowerShell is present on every supported Windows version.
-    const ps = Bun.which("pwsh") ?? Bun.which("powershell");
+    const ps = which("pwsh") ?? which("powershell");
     if (ps) return [ps, "-NoProfile", "-NonInteractive", "-Command", command];
     return [process.env.ComSpec || "cmd.exe", "/d", "/s", "/c", command];
   }
   const sh =
-    process.env.SHELL && Bun.which(process.env.SHELL)
+    process.env.SHELL && which(process.env.SHELL)
       ? process.env.SHELL
-      : Bun.which("bash") ?? Bun.which("zsh") ?? "/bin/sh";
+      : which("bash") ?? which("zsh") ?? "/bin/sh";
   return [sh, "-lc", command];
 }
 
@@ -273,7 +277,7 @@ export async function runBash(
 ): Promise<ToolResultPayload> {
   try {
     logger.debug("run_bash:", args.command);
-    const proc = Bun.spawn(shellArgv(args.command), {
+    const proc = spawn(shellArgv(args.command), {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
