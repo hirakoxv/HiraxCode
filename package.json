@@ -4,8 +4,14 @@
   "description": "HiraxCode - AI coding agent for the terminal, built for vibe coding",
   "type": "module",
   "bin": {
-    "hiraxcode": "./dist/hiraxcode"
+    "hiraxcode": "./bin/hiraxcode.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "tsconfig.json",
+    ".env.example"
+  ],
   "scripts": {
     "dev": "bun run src/index.tsx",
     "start": "bun run src/index.tsx",
@@ -16,7 +22,8 @@
     "build:linux": "bun build --compile --minify --target=bun-linux-x64 src/index.tsx --outfile dist/hiraxcode-linux-x64",
     "build:all": "bun run build:win && bun run build:mac && bun run build:mac-x64 && bun run build:linux",
     "test": "bun test",
-    "typecheck": "bun node_modules/typescript/lib/tsc.js --noEmit"
+    "typecheck": "bun node_modules/typescript/lib/tsc.js --noEmit",
+    "prepublishOnly": "bun test && bun run typecheck"
   },
   "keywords": [
     "ai",
@@ -28,6 +35,14 @@
     "ink"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hirakoxx/HiraxCode.git"
+  },
+  "homepage": "https://github.com/hirakoxx/HiraxCode#readme",
+  "bugs": {
+    "url": "https://github.com/hirakoxx/HiraxCode/issues"
+  },
   "dependencies": {
     "dotenv": "^16.4.7",
     "ink": "^5.1.0",
@@ -50,5 +65,8 @@
   },
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
