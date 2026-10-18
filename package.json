@@ -4,7 +4,7 @@
   "description": "HiraxCode - AI coding agent for the terminal, built for vibe coding",
   "type": "module",
   "bin": {
-    "hiraxcode": "./bin/hiraxcode.js"
+    "hiraxcode": "bin/hiraxcode.js"
   },
   "files": [
     "bin",
