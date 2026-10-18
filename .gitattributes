@@ -1,0 +1,14 @@
+# Normalise line endings: LF in the repository, native on checkout.
+* text=auto
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.gguf binary
+*.exe binary
