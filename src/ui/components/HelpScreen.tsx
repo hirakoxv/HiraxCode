@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from "ink";
+import { packageVersion } from "@/core/version";
 import { makeTheme, type Theme } from "../theme";
 import { padEnd } from "../lib/text";
 import { COMMANDS } from "./CommandMenu";
@@ -37,7 +38,7 @@ export function HelpScreen({
   theme,
   width = 80,
   height = 24,
-  version = "0.1.0",
+  version = packageVersion(),
   onClose,
 }: HelpScreenProps) {
   const t = theme ?? makeTheme(accent);

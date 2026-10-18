@@ -121,7 +121,9 @@ export class AgentLoop {
         conversation.push({
           id: nanoid(),
           role: "assistant",
-          content: content.trim() ? content : "",
+          // The text lives on the single assistant message above; repeating it here
+          // renders it once per tool call and duplicates it on the wire.
+          content: "",
           toolCallId: call.id,
           toolName: call.name,
           toolArgs: call.args,

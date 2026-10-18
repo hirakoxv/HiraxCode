@@ -23,9 +23,15 @@ interface AnthropicMessage {
 
 const EFFORT_BUDGET: Record<string, number> = { low: 2048, medium: 8192, high: 16384 };
 
-/** Extended thinking is available on Claude 3.7+ and Claude 4.x models. */
+/**
+ * Extended thinking is available on Claude 3.7+ and the Claude 4.x families.
+ * Anchored on the version token so a dated 3.x id like `claude-3-5-sonnet-20240620`
+ * is not mistaken for a 4.x model just because its date contains a 4.
+ */
 export function supportsThinking(model: string): boolean {
-  return /claude-(3[-.]7|.*4)/i.test(model);
+  const id = model.toLowerCase();
+  if (/claude-3[.-]7/.test(id)) return true;
+  return /claude-(?:[a-z]+-)?4(?:[.-]\d+)?(?![0-9])/.test(id);
 }
 
 /** Convert internal transcript to Anthropic Messages format. */
@@ -245,12 +251,15 @@ export class AnthropicProvider implements Provider {
           case "message_delta": {
             const u = evt.usage;
             if (u) {
+              // Only the completion count is authoritative here. `message_start` already
+              // reported input+output; sending a total now would replace it with output
+              // only, because the UI merges with `evt.usage.total || previous.total`.
               yield {
                 type: "usage",
                 usage: {
                   prompt: 0,
                   completion: u.output_tokens ?? 0,
-                  total: u.output_tokens ?? 0,
+                  total: 0,
                 },
               };
             }

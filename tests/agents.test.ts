@@ -12,6 +12,7 @@ import {
   BUILTIN_AGENTS,
 } from "@/core/agents";
 import { allTools } from "@/agent/tools";
+import { SYSTEM_PROMPT } from "@/agent/prompt";
 
 let workdir: string;
 
@@ -47,7 +48,7 @@ test("build mode keeps every tool", () => {
 test("build agent carries the rigorous engineering prompt", () => {
   const build = resolveAgent(loadAgents(workdir), "build");
   const prompt = agentSystemPrompt(build, "BASE");
-  expect(prompt).toContain("BUILD mode");
+  expect(prompt).toContain("MODE: BUILD");
   expect(prompt).toContain("VERIFICATION");
   expect(prompt).toContain("Smallest correct diff");
 });
@@ -80,8 +81,62 @@ test("pentest agent offers recon tools and a security prompt", () => {
     "run_bash",
     "http_request",
     "port_scan",
+    "cve_lookup",
   ]);
-  expect(agentSystemPrompt(pentest, "BASE")).toContain("PENTEST mode");
+  expect(agentSystemPrompt(pentest, "BASE")).toContain("MODE: PENTEST");
+});
+
+test("pentest prompt covers injection, CVEs and a real toolkit", () => {
+  const pentest = resolveAgent(loadAgents(workdir), "pentest");
+  const prompt = agentSystemPrompt(pentest, "BASE");
+  expect(prompt).toContain("SQL INJECTION");
+  expect(prompt).toContain("cve_lookup");
+  expect(prompt).toContain("sqlmap");
+  expect(prompt).toContain("EXPLOIT INTELLIGENCE");
+  expect(prompt).toContain("TOOLKIT");
+  // Recon alone is explicitly called out as a failure.
+  expect(prompt).toMatch(/reconnaissance is the beginning/i);
+});
+
+test("build prompt covers craft and a whole-tree audit", () => {
+  const build = resolveAgent(loadAgents(workdir), "build");
+  const prompt = agentSystemPrompt(build, "BASE");
+  expect(prompt).toContain("CODING CRAFT");
+  expect(prompt).toContain("CODEBASE AUDIT");
+  expect(prompt).toMatch(/walk the whole tree/i);
+});
+
+test("modes are declared and do not bleed into each other", () => {
+  const agents = loadAgents(workdir);
+
+  const build = agentSystemPrompt(resolveAgent(agents, "build"), "BASE");
+  expect(build).toContain("MODE: BUILD");
+  // A coding mode must not carry offensive-security technique material; it may only hand off.
+  expect(build).not.toMatch(/sqlmap|metasploit|CVSS|payload|exploit|IDOR/i);
+  expect(build).toContain("switch to the pentest");
+
+  const pentest = agentSystemPrompt(resolveAgent(agents, "pentest"), "BASE");
+  expect(pentest).toContain("MODE: PENTEST");
+  // A security mode must not be a coding mode.
+  expect(pentest).not.toContain("CODEBASE AUDIT");
+
+  const security = agentSystemPrompt(resolveAgent(agents, "security"), "BASE");
+  expect(security).toContain("MODE: SECURITY REVIEW");
+
+  const plan = agentSystemPrompt(resolveAgent(agents, "plan"), "BASE");
+  expect(plan).toContain("MODE: PLAN");
+
+  const general = agentSystemPrompt(resolveAgent(agents, "general"), "BASE");
+  expect(general).toContain("MODE: GENERAL");
+});
+
+test("the base prompt defers to the active mode", () => {
+  const base = SYSTEM_PROMPT("/tmp/example");
+  expect(base).toContain("Mode discipline");
+  expect(base).toContain("/agent");
+  // The old base prompt pre-loaded a security role for every mode; that is the leak.
+  expect(base).not.toContain("You support offensive-security testing");
+  expect(base).toContain("/tmp/example");
 });
 
 test("security agent is read-only (no write/edit tools)", () => {
@@ -90,7 +145,7 @@ test("security agent is read-only (no write/edit tools)", () => {
   expect(names).not.toContain("write_file");
   expect(names).not.toContain("edit_file");
   expect(names).toContain("read_file");
-  expect(agentSystemPrompt(security, "BASE")).toContain("SECURITY REVIEW mode");
+  expect(agentSystemPrompt(security, "BASE")).toContain("MODE: SECURITY REVIEW");
 });
 
 test("pentest and security are selectable primary agents", () => {
@@ -103,7 +158,7 @@ test("agent system prompt is appended to the base", () => {
   const plan = resolveAgent(loadAgents(workdir), "plan");
   const prompt = agentSystemPrompt(plan, "BASE");
   expect(prompt).toContain("BASE");
-  expect(prompt).toContain("PLAN mode");
+  expect(prompt).toContain("MODE: PLAN");
   expect(agentSystemPrompt(undefined, "BASE")).toBe("BASE");
 });
 

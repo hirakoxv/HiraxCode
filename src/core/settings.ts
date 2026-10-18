@@ -9,6 +9,7 @@ import {
   type ProviderDef,
   type ProviderKind,
 } from "./providers";
+import { logger } from "@/utils/logger";
 
 export interface ReasoningSettings {
   enabled: boolean;
@@ -217,12 +218,15 @@ export function saveSettings(settings: Settings): void {
       encoding: "utf-8",
       mode: 0o600,
     });
-  } catch {
-    // ignore write errors
+  } catch (e) {
+    // Swallowing this silently made the UI claim "saved automatically" while the change
+    // was lost (read-only config dir, full disk, permissions). At least leave a trail.
+    logger.warn(`could not save settings to ${configPath()}: ${(e as Error).message}`);
   }
 }
 
-/** Split a stored key field into individual keys (comma / semicolon / whitespace separated). */export function splitApiKeys(raw: string | undefined): string[] {
+/** Split a stored key field into individual keys (comma / semicolon / whitespace separated). */
+export function splitApiKeys(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
     .split(/[\s,;]+/)

@@ -77,6 +77,71 @@ function makeProvider() {
   return new OpenAiProvider({ id: "openai", baseUrl, apiKey: "test-key" });
 }
 
+test("assistant text is not repeated on every tool-call message", async () => {
+  const dupServer = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const body = (await req.json()) as { messages: { role: string }[] };
+      if (body.messages.some((m) => m.role === "tool")) {
+        return new Response(sse([chunk({ role: "assistant", content: "all done" }), chunk({}, "stop")]), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(
+        sse([
+          chunk({ role: "assistant", content: "Let me look around." }),
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_a",
+                type: "function",
+                function: { name: "list_dir", arguments: "{}" },
+              },
+              {
+                index: 1,
+                id: "call_b",
+                type: "function",
+                function: { name: "list_dir", arguments: '{"path":"."}' },
+              },
+            ],
+          }),
+          chunk({}, "tool_calls"),
+        ]),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    },
+  });
+
+  try {
+    const result = await new AgentLoop().run({
+      messages: [{ id: "u1", role: "user", content: "look around", timestamp: Date.now() }],
+      provider: new OpenAiProvider({
+        id: "openai",
+        baseUrl: `http://localhost:${dupServer.port}/v1`,
+        apiKey: "test-key",
+      }),
+      model: "mock/model",
+      systemPrompt: "you are a test",
+      workingDir: process.cwd(),
+      temperature: 0,
+      autoApproveSafeTools: true,
+      onEvent: () => {},
+      onApproval: async () => true,
+    });
+
+    // The text belongs to exactly one message, however many tools the turn called.
+    const withText = result.filter((m) => m.role === "assistant" && m.content.includes("Let me look"));
+    expect(withText).toHaveLength(1);
+
+    const toolMessages = result.filter((m) => m.role === "assistant" && m.toolName);
+    expect(toolMessages).toHaveLength(2);
+    for (const m of toolMessages) expect(m.content).toBe("");
+  } finally {
+    dupServer.stop(true);
+  }
+});
+
 test("agent loop calls a tool then answers", async () => {
   const events: AgentEvent[] = [];
   const conversation: Message[] = [

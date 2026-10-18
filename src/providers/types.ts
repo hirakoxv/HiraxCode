@@ -31,19 +31,26 @@ export async function* readSSE(body: ReadableStream<Uint8Array>): AsyncGenerator
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      yield trimmed.slice(5).trim();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        yield trimmed.slice(5).trim();
+      }
     }
+  } finally {
+    // Providers stop reading as soon as they see the end marker, which would otherwise
+    // leave the connection open until the garbage collector gets to it.
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }
 

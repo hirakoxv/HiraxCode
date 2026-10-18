@@ -172,6 +172,12 @@ export class OpenAiProvider implements Provider {
       stream: true,
     };
 
+    // The native OpenAI API only reports token usage in a streaming response when this
+    // is set. Other OpenAI-compatible endpoints either ignore it or report usage anyway.
+    if (this.id === "openai") {
+      body.stream_options = { include_usage: true };
+    }
+
     // Some reasoning models reject `temperature`; the catalog tells us.
     if (modelSupportsTemperature(this.id, req.model)) {
       body.temperature = req.temperature ?? 0.2;

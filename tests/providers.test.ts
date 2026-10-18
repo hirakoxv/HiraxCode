@@ -302,6 +302,19 @@ test("reasoning params are only sent to capable models", () => {
   expect(supportsThinking("claude-3-7-sonnet-latest")).toBe(true);
   expect(supportsThinking("claude-sonnet-4-5")).toBe(true);
   expect(supportsThinking("claude-opus-4-1")).toBe(true);
+
+  // Dated 3.x ids contain a "4" in the date. They do not support thinking, and treating
+  // them as if they did makes the API reject the request.
+  expect(supportsThinking("claude-3-5-sonnet-20240620")).toBe(false);
+  expect(supportsThinking("claude-3-5-haiku-20241022")).toBe(false);
+  expect(supportsThinking("claude-3-opus-20240229")).toBe(false);
+  expect(supportsThinking("claude-3-haiku-20240307")).toBe(false);
+  expect(supportsThinking("claude-2.1")).toBe(false);
+
+  // 4.x families, with and without a dated suffix.
+  expect(supportsThinking("claude-opus-4-20250514")).toBe(true);
+  expect(supportsThinking("claude-haiku-4-5")).toBe(true);
+  expect(supportsThinking("claude-4-sonnet")).toBe(true);
 });
 
 test("findLlamaBin reports a missing binary instead of throwing", () => {

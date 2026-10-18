@@ -37,10 +37,11 @@ Temperature controls how random the model's output is: `0` = deterministic and f
 - **Message queue** — send another message while the agent is working; it is queued and sent automatically when the turn finishes (with an `N queued` indicator).
 - **Accent themes** (`/theme`, default `#fab283`) plus **compact mode** (`/compact`) for small screens.
 - **Agent loop** — thinking → tool call → approval → execution → repeat.
-- **8 tools** — `read_file`, `list_dir`, `glob`, `edit_file`, `write_file`, `run_bash`, `http_request`, `port_scan` (with service, version-banner and TLS certificate fingerprinting).
-- **Build mode** — the default agent works like a staff engineer on safety-critical software: explicit design, smallest correct diff, and real verification instead of promises.
-- **Pentest mode** — a full attacker playbook: rules of engagement, seven phases from recon to reporting, concrete tooling and payloads.
+- **9 tools** — `read_file`, `list_dir`, `glob`, `edit_file`, `write_file`, `run_bash`, `http_request`, `port_scan` (service, version-banner and TLS certificate fingerprinting) and `cve_lookup` (NVD CVE matching by product and version).
+- **Build mode** — the default agent works like a staff engineer on safety-critical software: explicit design, smallest correct diff, real verification, and a whole-tree codebase audit procedure.
+- **Pentest mode** — a full attacker playbook: rules of engagement, seven phases from recon to reporting, SQL injection and injection tooling, CVE exploitation intelligence, and a complete toolkit.
 - **Security review mode** — a read-only source audit that traces untrusted input to dangerous sinks and reports `file:line` with a fix. See [Agents](#agents).
+- **Strict mode isolation** — one mode per session. Each agent declares its own `MODE:`, the base prompt defers to it, and a mode asked to do another mode's job hands off with `/agent` instead of drifting.
 - **Approval system** — dangerous actions ask for `y`/`n` confirmation.
 - **Multi-session** — session sidebar, history persisted to disk.
 - **Single-file bundle** — `bun run build:npm` produces one self-contained Node file with **zero dependencies**; `bun run build` produces a native binary.
@@ -213,18 +214,27 @@ The model must be **vision-capable**. If it isn't, HiraxCode refuses to send and
 | `run_bash` | Run a shell command (PowerShell on Windows, bash/zsh on macOS/Linux) | **yes** |
 | `http_request` | Send an HTTP/HTTPS request and inspect status, headers, body (web probing) | no |
 | `port_scan` | TCP-connect scan with service label, version banner and TLS certificate fingerprinting | **yes** |
+| `cve_lookup` | Look up published CVEs for a product/version in the NIST NVD, with CVSS vectors and references | no |
 
 ## Agents
 
 Four built-in agents, selectable with `/agent <id>`, `/pentest`, or the agent picker:
 
-- **Build** (`build`, default) — works like a staff engineer on safety-critical software. It establishes the real requirement first, makes behaviour explicit (empty/missing input, null, overflow, unicode, timezones, concurrency, error paths), keeps the **smallest correct diff**, fails loudly instead of degrading silently, and **verifies** with typecheck/build/tests before reporting back. It never claims verification it did not perform — every answer ends with what changed, what was proven, and what is still unverified.
+- **Build** (`build`, default) — works like a staff engineer on safety-critical software. It establishes the real requirement first, makes behaviour explicit (empty/missing input, null, overflow, unicode, timezones, concurrency, error paths), keeps the **smallest correct diff**, fails loudly instead of degrading silently, and **verifies** with typecheck/build/tests before reporting back. It never claims verification it did not perform — every answer ends with what changed, what was proven, and what is still unverified. When you ask it to review or "check everything", it **walks the whole tree instead of sampling**: map the modules and entry points, read every source file, work a fixed checklist (correctness, error handling, resource lifecycle, concurrency, input validation, dead code, duplication, docs vs behaviour, test quality), report `severity · file:line · why it matters · fix`, then fix in small verified batches with a regression test per bug.
 - **Plan** (`plan`) — read-only exploration. Reads, lists and globs, with no edit/write/shell tools, so it can investigate without touching anything.
 - **Pentest** (`pentest`) — for **authorised** engagements, a seven-phase operator playbook: scope & evidence folder → passive recon (DNS/AXFR, certificate transparency, TLS metadata, exposed files, stack fingerprinting) → active scan with version → CVE mapping → per-service enumeration (web routes and parameters, GraphQL, SMB/RPC, SSH/FTP, data stores, Docker/kubelet/etcd, SNMP/NFS) → vulnerability classes ordered by real-world yield (broken access control/IDOR first, then authn & JWT, injection, file handling, SSRF/smuggling/cache poisoning, client-side, deserialisation, secrets, business logic) → exploitation and privilege escalation (runnable PoCs, Linux and Windows privesc, pivoting only when in scope, artefact cleanup) → `findings.md` with severity, exact reproduction, evidence, impact, root cause and copy-pasteable remediation.
   It is **non-destructive by default** — no DoS, no destructive writes, no bulk exfiltration — and proves impact with the minimum action. Findings stay labelled `confirmed`, `likely` or `unverified`.
+  Reconnaissance is treated as a starting point, not a result: the agent attacks with every class of technique in whatever order the target rewards — enumeration, **SQL injection** (boolean, error-based, time-based and UNION, plus NoSQL/LDAP/XPath/ORM/second-order variants, hand-verified before any `sqlmap -r` run), authentication and authorisation attacks, credential attacks, misconfiguration, exploit development and post-exploitation. For **CVE work** it calls `cve_lookup` with the product and version observed by `port_scan`, which queries the NIST NVD, filters by the real CPE version ranges, and returns CVSS severity, score and vector, so a banner becomes a checkable vulnerability instead of a guess.
 - **Security** (`security`) — a **read-only** source audit: maps entry points and trust boundaries, traces untrusted input to dangerous sinks (SQL, shell, filesystem, template, deserialiser, HTTP client, logger) and reports `file:line` with the exploitable path, a concrete fix, and a prioritised fix order. No write/edit tools.
 
 The security agents answer directly — they assume an authorised engagement and won't bury you in caveats. Point them at targets you own or are permitted to test: `port_scan` and `run_bash` require approval (unless you turn on `/yolo`), `http_request` is read-only and runs immediately.
+
+**Modes do not mix.** Exactly one mode is active per session and it declares itself at the top of the system prompt (`MODE: BUILD`, `MODE: PENTEST`, `MODE: SECURITY REVIEW`, `MODE: PLAN`, `MODE: GENERAL`). The base prompt defers to that declaration, so:
+- Build and Plan stay on software: they will not drift into payloads or exploitation.
+- Pentest and Security stay on the engagement: they will not turn into product feature work.
+- If you ask a mode for another mode's job, it names the right agent and tells you to switch with `/agent` instead of quietly changing role.
+
+Switching with `/agent <id>`, `/pentest` or `/plan` starts a fresh system prompt, so the previous mode's instructions are gone rather than stacked.
 
 Example:
 

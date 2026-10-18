@@ -332,7 +332,7 @@ export function allProviders(): ProviderDef[] {
   return [...byId.values()];
 }
 
-/** Group providers for display: cloud first, then local. */
+/** Group providers for display: local first (they need no key), then cloud. */
 export function providerGroups(): { title: string; providers: ProviderDef[] }[] {
   const all = allProviders();
   const byName = (a: ProviderDef, b: ProviderDef) => a.name.localeCompare(b.name);
