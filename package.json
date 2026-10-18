@@ -1,6 +1,6 @@
 {
   "name": "hiraxcode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HiraxCode - AI coding agent for the terminal, built for vibe coding",
   "type": "module",
   "bin": {
