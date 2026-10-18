@@ -1,5 +1,5 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
-import { executeTool, parsePorts } from "@/agent/tools";
+import { describeService, executeTool, parsePorts, readHttpMeta } from "@/agent/tools";
 
 /**
  * A tiny local HTTP server used to exercise `http_request` and `port_scan`
@@ -103,4 +103,53 @@ test("port_scan rejects an unresolvable host", async () => {
     process.cwd(),
   );
   expect(r.success).toBe(false);
+});
+
+test("readHttpMeta extracts the status line and Server header", () => {
+  const raw = "HTTP/1.1 403 Forbidden\r\nServer: Werkzeug/2.0.1\r\nX-Test: yes\r\n\r\n";
+  expect(readHttpMeta(raw)).toEqual({ status: "403 Forbidden", server: "Werkzeug/2.0.1" });
+  expect(readHttpMeta("not an http response").status).toBeUndefined();
+  expect(readHttpMeta("").server).toBeUndefined();
+});
+
+test("describeService identifies flavours of banner", () => {
+  expect(describeService(22, "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13\r\n")).toEqual({
+    service: "ssh",
+    detail: "OpenSSH_9.6p1 Ubuntu-3ubuntu13",
+  });
+
+  const web = describeService(8080, "HTTP/1.0 200 OK\r\nServer: nginx/1.24.0\r\n\r\n");
+  expect(web.service).toBe("http");
+  expect(web.detail).toBe("nginx/1.24.0 · 200 OK");
+
+  const smtp = describeService(25, "220 mail.example.com ESMTP Postfix\r\n");
+  expect(smtp.detail).toBe("mail.example.com ESMTP Postfix");
+
+  // Binary banners (MySQL-style) are dropped instead of leaking control bytes.
+  expect(describeService(3306, "\u0000\u0001\u0002\u0003junk\u0000\u0001").detail).toBeUndefined();
+
+  expect(describeService(9999, "")).toEqual({});
+});
+
+test("port_scan can skip fingerprinting", async () => {
+  const r = await executeTool(
+    "port_scan",
+    { host: "127.0.0.1", ports: String(port), timeout: 1000, banner: false },
+    process.cwd(),
+  );
+  expect(r.success).toBe(true);
+  expect(r.output).toContain("1 open");
+  expect(r.output).toContain(`open  ${port}`);
+});
+
+test("port_scan fingerprints http on a non-standard port", async () => {
+  const r = await executeTool(
+    "port_scan",
+    { host: "127.0.0.1", ports: String(port), timeout: 1000 },
+    process.cwd(),
+  );
+  expect(r.success).toBe(true);
+  const line = r.output.split("\n").find((l) => l.includes(`open  ${port}`));
+  expect(line).toBeDefined();
+  expect(line).toContain("http");
 });

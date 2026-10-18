@@ -9,6 +9,7 @@ import {
 import { dirname, join, relative, resolve } from "path";
 import { platform } from "os";
 import { connect } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import { lookup } from "node:dns/promises";
 import { globIterate } from "glob";
 import { z } from "zod";
@@ -466,7 +467,7 @@ function probePort(host: string, port: number, timeout: number): Promise<boolean
 export const portScanTool: ToolDefinition = {
   name: "port_scan",
   description:
-    "TCP-connect scan of a single host to find open ports (reconnaissance). Accepts a port list/range or scans a set of common ports. Only scan systems you own or have explicit permission to test.",
+    "TCP-connect scan of a host with service fingerprinting (reconnaissance). Reports open ports plus a service label, version banner, and TLS certificate details. Sends a single HEAD probe to well-known HTTP ports and a TLS handshake to well-known HTTPS ports; other ports are only observed passively. Only scan systems you own or have explicit permission to test.",
   needsApproval: true,
   safe: false,
   parameters: z.object({
@@ -487,11 +488,220 @@ export const portScanTool: ToolDefinition = {
       .min(1)
       .optional()
       .describe("Parallel connections (default 128)"),
+    banner: z
+      .boolean()
+      .optional()
+      .describe("Fingerprint services/versions and TLS (default true)"),
   }),
 };
 
+/** Ports that normally speak TLS, so we handshake instead of reading a plaintext banner. */
+const TLS_PORTS = new Set([443, 465, 636, 990, 993, 995, 3269, 5986, 6443, 8443, 8834, 9443]);
+
+/** Ports that normally speak plaintext HTTP and will answer a HEAD probe. */
+const HTTP_PORTS = new Set([
+  80, 3000, 5000, 5601, 7001, 8000, 8008, 8080, 8081, 8088, 8181, 8888, 8983, 9000, 9080,
+  10000, 15672,
+]);
+
+const SCAN_UA = "HiraxCode/1.0";
+
+function headProbe(host: string): string {
+  return `HEAD / HTTP/1.0\r\nHost: ${host}\r\nUser-Agent: ${SCAN_UA}\r\nConnection: close\r\n\r\n`;
+}
+
+/** Fraction of characters that are printable ASCII — used to discard binary banners. */
+function printableRatio(s: string): number {
+  if (!s) return 0;
+  let ok = 0;
+  for (const ch of s) {
+    const c = ch.charCodeAt(0);
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c < 127)) ok++;
+  }
+  return ok / s.length;
+}
+
+/**
+ * Read whatever a socket volunteers. Some services greet on connect (SSH, FTP, SMTP);
+ * HTTP needs a poke, which is what `send` is for.
+ */
+function readBanner(
+  host: string,
+  port: number,
+  timeout: number,
+  send?: string,
+  limit = 4096,
+): Promise<string> {
+  return new Promise((resolve) => {
+    let data = "";
+    let settled = false;
+    const socket = connect({ host, port });
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {}
+      resolve(data);
+    };
+    socket.setTimeout(timeout);
+    socket.once("connect", () => {
+      if (!send) return;
+      try {
+        socket.write(send);
+      } catch {}
+    });
+    socket.on("data", (chunk: Buffer) => {
+      data += chunk.toString("latin1");
+      if (data.length >= limit) finish();
+    });
+    socket.once("timeout", finish);
+    socket.once("error", finish);
+    socket.once("close", finish);
+  });
+}
+
+/** Complete a TLS handshake to summarise the certificate, then read the HTTP layer on top. */
+function readTls(
+  host: string,
+  port: number,
+  timeout: number,
+  limit = 4096,
+): Promise<{ raw: string; cert?: string }> {
+  return new Promise((resolve) => {
+    let raw = "";
+    let cert: string | undefined;
+    let settled = false;
+    const socket = tlsConnect({ host, port, rejectUnauthorized: false, timeout });
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {}
+      resolve({ raw, cert });
+    };
+    socket.once("secureConnect", () => {
+      try {
+        const c = socket.getPeerCertificate();
+        const bits = [
+          `CN=${c?.subject?.CN ?? "(no CN)"}`,
+          `issuer=${c?.issuer?.O ?? c?.issuer?.CN ?? "(unknown)"}`,
+        ];
+        if (c?.valid_to) bits.push(`expires ${c.valid_to}`);
+        const proto = socket.getProtocol();
+        if (proto) bits.push(proto);
+        cert = bits.join(" · ");
+      } catch {}
+      try {
+        socket.write(headProbe(host));
+      } catch {}
+    });
+    socket.on("data", (chunk: Buffer) => {
+      raw += chunk.toString("latin1");
+      if (raw.length >= limit) finish();
+    });
+    socket.once("timeout", finish);
+    socket.once("error", finish);
+    socket.once("close", finish);
+  });
+}
+
+/** Pull the status code and Server header out of a raw HTTP/1.x response. */
+export function readHttpMeta(raw: string): { status?: string; server?: string } {
+  const [first = ""] = raw.split(/\r?\n/, 1);
+  const status = /^HTTP\/\d(?:\.\d)?\s+(\d{3}[^\r\n]*)/i.exec(first)?.[1]?.trim();
+  const server = raw
+    .split(/\r?\n/)
+    .find((l) => /^server:/i.test(l))
+    ?.slice(7)
+    .trim();
+  return { status, server };
+}
+
+/** Turn a raw banner into a service label and a one-line version/detail string. */
+export function describeService(port: number, raw: string): Fingerprint {
+  const text = raw.replace(/\0/g, "").trim();
+  if (!text) return {};
+
+  const ssh = /^SSH-([\d.]+)-(\S.*)$/m.exec(text);
+  if (ssh) return { service: "ssh", detail: clip(ssh[2].trim(), 140) };
+
+  const http = readHttpMeta(text);
+  if (http.status) {
+    return {
+      service: TLS_PORTS.has(port) ? "https" : "http",
+      detail: clip([http.server, http.status].filter(Boolean).join(" · "), 140),
+    };
+  }
+
+  const greet = /^220[\s-]+(.+)$/m.exec(text);
+  if (greet) return { detail: clip(greet[1].trim(), 140) };
+
+  const first = text.split(/\r?\n/).find((l) => l.trim())?.trim() ?? "";
+  if (!first || printableRatio(first) < 0.8) return {};
+  return { detail: clip(first, 140) };
+}
+
+export interface Fingerprint {
+  service?: string;
+  detail?: string;
+  cert?: string;
+}
+
+/**
+ * Second pass over the open ports: identify the service, its version and (for TLS)
+ * the certificate. Best-effort — a failed probe never fails the scan.
+ */
+async function fingerprintServices(
+  host: string,
+  ports: number[],
+  timeout: number,
+  concurrency: number,
+): Promise<Map<number, Fingerprint>> {
+  const out = new Map<number, Fingerprint>();
+  const grabTimeout = Math.max(300, Math.min(timeout, 1200));
+  let index = 0;
+
+  const worker = async () => {
+    while (index < ports.length) {
+      const port = ports[index++]!;
+      try {
+        if (TLS_PORTS.has(port)) {
+          const tls = await readTls(host, port, grabTimeout);
+          const meta = readHttpMeta(tls.raw);
+          out.set(port, {
+            service: "https",
+            detail: clip([meta.server, meta.status].filter(Boolean).join(" · "), 140) || undefined,
+            cert: tls.cert,
+          });
+        } else if (HTTP_PORTS.has(port)) {
+          const raw = await readBanner(host, port, grabTimeout, headProbe(host));
+          out.set(port, describeService(port, raw));
+        } else {
+          // Most services greet on connect. If nothing arrives, the port is either a
+          // silent protocol or HTTP on a non-standard port — one HEAD probe tells us.
+          const passive = await readBanner(host, port, Math.min(grabTimeout, 500));
+          const raw = passive || (await readBanner(host, port, grabTimeout, headProbe(host)));
+          out.set(port, describeService(port, raw));
+        }
+      } catch {
+        // fingerprinting is optional context
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, ports.length) }, worker));
+  return out;
+}
+
 export async function portScan(
-  args: { host: string; ports?: string; timeout?: number; concurrency?: number },
+  args: {
+    host: string;
+    ports?: string;
+    timeout?: number;
+    concurrency?: number;
+    banner?: boolean;
+  },
   _cwd: string,
 ): Promise<ToolResultPayload> {
   const host = args.host.trim();
@@ -527,7 +737,18 @@ export async function portScan(
   if (open.length === 0) {
     return { success: true, output: `${head}\n(no open ports found)` };
   }
-  const lines = open.map((p) => `open  ${String(p).padEnd(6)} ${PORT_NAMES[p] ?? ""}`.trimEnd());
+
+  const info =
+    args.banner === false ? new Map<number, Fingerprint>() : await fingerprintServices(host, open, timeout, concurrency);
+
+  const lines: string[] = [];
+  for (const p of open) {
+    const fp = info.get(p);
+    const service = fp?.service ?? PORT_NAMES[p] ?? (TLS_PORTS.has(p) ? "ssl" : "");
+    const row = `open  ${String(p).padEnd(6)} ${service}`.trimEnd();
+    lines.push(fp?.detail ? `${row}   ${fp.detail}` : row);
+    if (fp?.cert) lines.push(`      └ tls: ${fp.cert}`);
+  }
   return { success: true, output: [head, "", ...lines].join("\n") };
 }
 

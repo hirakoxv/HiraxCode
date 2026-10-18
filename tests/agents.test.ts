@@ -44,6 +44,25 @@ test("build mode keeps every tool", () => {
   expect(toolsForAgent(build, allTools).length).toBe(allTools.length);
 });
 
+test("build agent carries the rigorous engineering prompt", () => {
+  const build = resolveAgent(loadAgents(workdir), "build");
+  const prompt = agentSystemPrompt(build, "BASE");
+  expect(prompt).toContain("BUILD mode");
+  expect(prompt).toContain("VERIFICATION");
+  expect(prompt).toContain("Smallest correct diff");
+});
+
+test("pentest agent prompt is a phased engagement playbook", () => {
+  const pentest = resolveAgent(loadAgents(workdir), "pentest");
+  const prompt = agentSystemPrompt(pentest, "BASE");
+  for (const phase of ["PHASE 1", "PHASE 3", "PHASE 5", "PHASE 7"]) {
+    expect(prompt).toContain(phase);
+  }
+  expect(prompt).toContain("RULES OF ENGAGEMENT");
+  expect(prompt).toContain("IDOR");
+  expect(prompt).toContain("findings.md");
+});
+
 test("pentest agent offers recon tools and a security prompt", () => {
   const pentest = resolveAgent(loadAgents(workdir), "pentest");
   const names = toolsForAgent(pentest, allTools).map((t) => t.name);
