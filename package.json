@@ -1,6 +1,6 @@
 {
   "name": "@hirakoxx/cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "HiraxCode - terminal AI agent for coding and ethical hacking (pentest)",
   "type": "module",
   "bin": {
@@ -38,11 +38,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hirakoxx/HiraxCode.git"
+    "url": "git+https://github.com/kocakxs/HiraxCode.git"
   },
-  "homepage": "https://github.com/hirakoxx/HiraxCode#readme",
+  "homepage": "https://github.com/kocakxs/HiraxCode#readme",
   "bugs": {
-    "url": "https://github.com/hirakoxx/HiraxCode/issues"
+    "url": "https://github.com/kocakxs/HiraxCode/issues"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",

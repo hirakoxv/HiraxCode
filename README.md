@@ -1,7 +1,7 @@
 # HiraxCode
 
 [![npm](https://img.shields.io/npm/v/@hirakoxx/cli.svg?label=%40hirakoxx%2Fcli)](https://www.npmjs.com/package/@hirakoxx/cli)
-[![license](https://img.shields.io/npm/l/@hirakoxx/cli.svg)](https://github.com/hirakoxx/HiraxCode/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@hirakoxx/cli.svg)](https://github.com/kocakxs/HiraxCode/blob/main/LICENSE)
 
 > An AI coding agent that lives in your terminal, built for **vibe coding**.
 > Multi-provider, local models & **GGUF**, with settings right inside the TUI.
