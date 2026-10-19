@@ -1,13 +1,13 @@
 {
   "name": "@hirakoxx/cli",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "HiraxCode - terminal AI agent for coding and ethical hacking (pentest)",
   "type": "module",
   "bin": {
     "hiraxcode": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist/index.js"
   ],
   "scripts": {
     "dev": "bun run src/index.tsx",
