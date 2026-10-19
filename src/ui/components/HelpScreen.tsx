@@ -25,6 +25,7 @@ const KEYS: [string, string][] = [
   ["ctrl+shift+v", "same, when ctrl+v is captured"],
   ["/paste <path>", "attach image file, folder or *.png"],
   ["/watch", "auto-attach copied screenshots"],
+  ["backspace", "remove last attachment (empty prompt)"],
   ["ctrl+b", "toggle sidebar"],
   ["↑ ↓", "scroll lines"],
   ["mouse wheel", "scroll transcript"],

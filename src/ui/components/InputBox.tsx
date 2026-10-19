@@ -77,7 +77,7 @@ export function InputBox(props: InputBoxProps) {
               props.attachments.map((a) => a.name ?? "image").join(", "),
               Math.max(10, cols - 44),
             )}
-            {" · /drop to remove"}
+            {" · backspace to remove"}
           </Text>
         </Box>
       )}

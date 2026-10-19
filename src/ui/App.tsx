@@ -365,7 +365,7 @@ export function App() {
         return next;
       });
       autoAttachedRef.current = name;
-      setNotice("📋 clipboard image attached — /drop to remove");
+      setNotice("📋 clipboard image attached — backspace to remove");
     });
     return () => watcher.stop();
   }, [settings.clipboardWatch]);
@@ -965,6 +965,20 @@ export function App() {
             setSidebarFocus(false);
           }
         }
+        return;
+      }
+
+      // Backspace on an empty prompt removes the newest attachment — no command
+      // needed. While there is text, backspace just edits the text as usual.
+      if ((key.backspace || key.delete) && input === "" && attachments.length > 0) {
+        const left = attachments.length - 1;
+        setAttachments((prev) => prev.slice(0, -1));
+        // Let the same image be attached again (Ctrl+V / a fresh copy).
+        lastClipboardRef.current = "";
+        autoAttachedRef.current = "";
+        setNotice(
+          left === 0 ? "image removed" : `${left} image${left === 1 ? "" : "s"} attached`,
+        );
         return;
       }
 

@@ -1,6 +1,6 @@
 {
   "name": "@hirakoxx/cli",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "HiraxCode - terminal AI agent for coding and ethical hacking (pentest)",
   "type": "module",
   "bin": {

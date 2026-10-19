@@ -1,6 +1,9 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import React from "react";
 import { render } from "ink-testing-library";
+import { mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 let server: ReturnType<typeof Bun.serve>;
 
@@ -60,6 +63,34 @@ test("typing a message streams a reply into the UI", async () => {
 
   expect(frame).toContain("hi there");
   expect(frame).toContain("Hello from mock!");
+
+  unmount();
+});
+
+test("backspace removes an attachment when the prompt is empty", async () => {
+  const { App } = await import("@/ui/App");
+  const { lastFrame, stdin, unmount } = render(React.createElement(App), {
+    columns: 100,
+    rows: 30,
+  });
+
+  await wait(200);
+
+  const dir = mkdtempSync(join(tmpdir(), "hirax-attach-"));
+  const file = join(dir, "shot.png");
+  writeFileSync(file, Buffer.from("89504e470d0a1a0a", "hex"));
+
+  // Attach through the command so no clipboard is involved.
+  stdin.write(`/paste ${file}`);
+  await wait(80);
+  stdin.write("\r");
+  await wait(150);
+  expect(lastFrame() ?? "").toContain("1 image attached");
+
+  // Backspace on the (empty) prompt drops it again.
+  stdin.write("\x7f");
+  await wait(150);
+  expect(lastFrame() ?? "").not.toContain("1 image attached");
 
   unmount();
 });

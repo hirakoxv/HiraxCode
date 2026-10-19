@@ -160,7 +160,7 @@ HiraxCode's own multi-key rotation stacks with it: put several unified keys (com
    - OpenAI-compatible → `image_url` data-URI
    - Anthropic → base64 `image` block
    - Gemini → `inlineData`
-4. `/drop` to cancel attachments.
+4. Remove attachments with `Backspace` while the prompt is empty (one per press), or `/drop` to clear them all.
 
 > **Why the watcher exists:** Windows Terminal and the VS Code integrated terminal bind `Ctrl+V` to their *own* text paste, so the keypress never reaches HiraxCode and the bitmap can never be read. Instead of giving up, HiraxCode watches the clipboard and attaches a new screenshot the moment it appears.
 
@@ -182,6 +182,7 @@ The model must be **vision-capable**. If it isn't, HiraxCode refuses to send and
 | `Enter` | Send message (queued while the agent is running) |
 | `Tab` | Open/focus the session sidebar |
 | `Ctrl+V` / `Ctrl+Shift+V` / `Alt+V` | Attach an image (or file) from the clipboard |
+| `Backspace` | Remove the last image attachment (when the prompt is empty) |
 | `Ctrl+B` | Toggle sidebar |
 | `/` | Open the command palette (`↑`/`↓` to move, `Tab` to complete) |
 | `Mouse wheel` | Scroll the transcript |
@@ -204,7 +205,7 @@ The model must be **vision-capable**. If it isn't, HiraxCode refuses to send and
 | `/paste [path]` | Attach a clipboard image, or an image file / folder / wildcard by path |
 | `/file <path>` | Attach an image file, folder, or `*.png` |
 | `/watch [on\|off]` | Toggle auto-attach of newly copied screenshots (Windows) |
-| `/drop` | Clear image attachments |
+| `/drop` | Clear all image attachments (`Backspace` removes the last one) |
 | `/new` | New session |
 | `/clear` | Clear the conversation |
 | `/sessions` | Toggle the session sidebar |
