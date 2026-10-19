@@ -38,11 +38,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kocakxs/HiraxCode.git"
+    "url": "git+https://github.com/hirakoxv/HiraxCode.git"
   },
-  "homepage": "https://github.com/kocakxs/HiraxCode#readme",
+  "homepage": "https://github.com/hirakoxv/HiraxCode#readme",
   "bugs": {
-    "url": "https://github.com/kocakxs/HiraxCode/issues"
+    "url": "https://github.com/hirakoxv/HiraxCode/issues"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
