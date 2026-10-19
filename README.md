@@ -22,7 +22,7 @@ Built with **TypeScript + Ink** (React for the terminal), shipped as a single se
 - **18 providers** — OpenRouter, OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cerebras, **River AI**, FreeLLMAPI, Ollama, LM Studio, llama.cpp, local **GGUF**, and Custom (OpenAI-compatible).
 - **Multiple API keys + auto-rotation** — store several keys per provider (comma-separated). When one is rejected (401/402/403) or hits its rate limit (429), HiraxCode automatically rotates to the next key mid-conversation.
 - **Local GGUF, zero setup** — just point at a `.gguf` file. If `llama-server` is missing, HiraxCode **downloads** the official llama.cpp binary into `~/.cache/hiraxcode/bin` (Windows/macOS/Linux, x64 & arm64), then spawns it and waits until it is ready.
-- **Image input (screenshots)** — attach a clipboard screenshot with `/paste`, `Alt+V`, or `Ctrl+V`, then send it to a vision model (GPT-4.1/4o, Claude, Gemini, LLaVA, Qwen2-VL, …). If the model can't read images, HiraxCode tells you and suggests the right ones (no cryptic errors).
+- **Image input (screenshots)** — on Windows a freshly copied screenshot attaches automatically (the clipboard is watched, because terminals swallow `Ctrl+V`); elsewhere use `Ctrl+V` / `Alt+V` or `/paste`. Files, whole folders and `*.png` wildcards work too, and images go to any vision model (GPT-4.1/4o, Claude, Gemini, LLaVA, Qwen2-VL, …). If the model can't read images, HiraxCode tells you and suggests the right ones (no cryptic errors).
 - **Local vision** — GGUF models can accept images through a *multimodal projector* (`--mmproj`); set the **mmproj (vision)** field in `/settings`.
 - **Cross-platform** — runs on Windows, macOS, and Linux. `run_bash` uses PowerShell on Windows and bash/zsh on macOS/Linux.
 - **In-TUI settings** (`/settings`) — provider, API key, model, base URL, reasoning, temperature, max tokens, auto-approve, working dir, accent colour. Auto-saved.
@@ -146,16 +146,30 @@ HiraxCode's own multi-key rotation stacks with it: put several unified keys (com
 ### Sending images / screenshots
 
 1. Copy a screenshot (Windows: `Win+Shift+S`; macOS: `Cmd+Ctrl+Shift+4`; Linux: use `xclip`/`wl-paste`).
-2. In HiraxCode press `Alt+V` (or `Ctrl+V` when your terminal passes it through) or run `/paste`. A `▣ 1 image attached` indicator appears.
+2. Attach it — any of these works:
+
+   | How | When to use it |
+   |---|---|
+   | **just copy it** | On **Windows**, a freshly copied screenshot is attached automatically: the clipboard is watched in the background. A `▣ 1 image attached` indicator appears. `/watch off` disables this. |
+   | `Ctrl+V` | Terminals that forward the key to the app (most Linux/macOS terminals). |
+   | `Ctrl+Shift+V` | Some terminals only bind the plain `Ctrl+V`. |
+   | `Alt+V` | Works almost everywhere, including Windows Terminal and the VS Code terminal. |
+   | `/paste` | Any time, from any screen. |
+
 3. Send the message. HiraxCode converts the image to the right format per provider:
    - OpenAI-compatible → `image_url` data-URI
    - Anthropic → base64 `image` block
    - Gemini → `inlineData`
 4. `/drop` to cancel attachments.
 
-You can also attach an image **from a file**:
+> **Why the watcher exists:** Windows Terminal and the VS Code integrated terminal bind `Ctrl+V` to their *own* text paste, so the keypress never reaches HiraxCode and the bitmap can never be read. Instead of giving up, HiraxCode watches the clipboard and attaches a new screenshot the moment it appears.
+
+You can also attach images **from a file, folder, or wildcard**:
 
 - `/paste <path>` or `/file <path>` — e.g. `/file C:\shots\bug.png`.
+- `/paste <folder>` — attaches every image in that folder, newest first (up to 12), so `/paste %USERPROFILE%\Pictures\Screenshots` grabs your latest shots.
+- `/paste "C:\shots\*.png"` — wildcards work; quote the path if it contains spaces.
+- Relative paths resolve against the working directory (`/cd`).
 - Copy a file in your file manager and press `Alt+V` — images are attached; other files have their path inserted into the prompt.
 - Drag a file onto the terminal (which types its path) and press `Enter` — any image path in your message is attached automatically.
 
@@ -167,7 +181,7 @@ The model must be **vision-capable**. If it isn't, HiraxCode refuses to send and
 |---|---|
 | `Enter` | Send message (queued while the agent is running) |
 | `Tab` | Open/focus the session sidebar |
-| `Ctrl+V` / `Alt+V` | Attach an image (or file) from the clipboard |
+| `Ctrl+V` / `Ctrl+Shift+V` / `Alt+V` | Attach an image (or file) from the clipboard |
 | `Ctrl+B` | Toggle sidebar |
 | `/` | Open the command palette (`↑`/`↓` to move, `Tab` to complete) |
 | `Mouse wheel` | Scroll the transcript |
@@ -187,8 +201,9 @@ The model must be **vision-capable**. If it isn't, HiraxCode refuses to send and
 | `/model` | Pick / type a model |
 | `/agent [id]` | Switch agent (build / plan / pentest / security / custom) |
 | `/pentest` | Jump straight to the Pentest agent |
-| `/paste [path]` | Attach a clipboard image, or a file by path |
-| `/file <path>` | Attach an image file |
+| `/paste [path]` | Attach a clipboard image, or an image file / folder / wildcard by path |
+| `/file <path>` | Attach an image file, folder, or `*.png` |
+| `/watch [on\|off]` | Toggle auto-attach of newly copied screenshots (Windows) |
 | `/drop` | Clear image attachments |
 | `/new` | New session |
 | `/clear` | Clear the conversation |
@@ -309,7 +324,8 @@ src/
 │                              # SettingsScreen, HelpScreen, CustomProviderForm
 └── utils/                     # runtime (Node spawn/which/ports/sleep),
                                # logger, helpers, color, binaries (auto-download),
-                               # clipboard (cross-platform image/file reading)
+                               # clipboard (cross-platform image/file reading),
+                               # clipboard-watch (Windows live screenshot capture)
 ```
 
 Agent flow: **user → streamed answer/thinking → tool call → approval → execution → result back to the model → repeat → final answer**.
@@ -337,7 +353,7 @@ Coverage includes: tools (including `http_request` & `port_scan`), the agent loo
 - **`llama-server not found`** — HiraxCode downloads llama.cpp automatically; if that fails (e.g. no internet), install it manually and set **llama-server** in `/settings` to the binary path.
 - **Model can't read images** — use a vision model (GPT-4.1/4o, Claude, Gemini, LLaVA, Qwen2-VL). For local GGUF, set **mmproj** in `/settings`.
 - **`/paste` says "no image in clipboard"** — make sure you copied a screenshot, not text. On Linux you need `xclip` (X11) or `wl-paste` (Wayland).
-- **`Ctrl+V` does nothing** — some terminals (e.g. VS Code) capture `Ctrl+V` for their own paste. Use `Alt+V` or `/paste` instead.
+- **`Ctrl+V` does nothing** — Windows Terminal and the VS Code integrated terminal capture `Ctrl+V` for their own paste, so the app never sees it. On Windows HiraxCode watches the clipboard and attaches new screenshots automatically (`/watch off` turns that off). Everywhere else use `Alt+V`, `Ctrl+Shift+V`, or `/paste`.
 - **Image not sent** — if the model is text-only, HiraxCode withholds the send and suggests models; press `/drop` to send text only.
 - **Local model missing** — make sure the local server is running (Ollama/LM Studio/llama.cpp), then `/model`.
 - **Logs** — `~/.local/state/hiraxcode/hiraxcode.log`.

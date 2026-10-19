@@ -4,6 +4,7 @@ import React from "react";
 import { App } from "./ui/App";
 import { disableMouseTracking } from "./ui/lib/terminal";
 import { stopLlamaServer } from "./providers/llama";
+import { stopAllWatchers } from "./utils/clipboard-watch";
 import { logger } from "./utils/logger";
 
 process.on("uncaughtException", (err) => logger.error("uncaughtException", err));
@@ -16,6 +17,7 @@ function shutdown(code = 0): never {
   if (stopping) process.exit(code);
   stopping = true;
   disableMouseTracking();
+  stopAllWatchers();
   stopLlamaServer();
   process.exit(code);
 }
@@ -24,6 +26,7 @@ process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 process.on("exit", () => {
   disableMouseTracking();
+  stopAllWatchers();
   stopLlamaServer();
 });
 

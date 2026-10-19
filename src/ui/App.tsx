@@ -55,7 +55,9 @@ import {
   fileName,
   clipboardSupported,
   imageBytes,
+  expandImagePath,
 } from "@/utils/clipboard";
+import { startClipboardWatch } from "@/utils/clipboard-watch";
 import { logger } from "@/utils/logger";
 import { makeTheme } from "./theme";
 import { Sidebar } from "./components/Sidebar";
@@ -243,6 +245,14 @@ export function App() {
 
   const refreshSessions = useCallback(() => setSessions(store.list()), [store]);
 
+  /** Current screen, readable from async callbacks without re-subscribing. */
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
+  /** Fingerprint of the last clipboard bitmap we attached (dedupes Ctrl+V + watcher). */
+  const lastClipboardRef = useRef("");
+  /** Name of the attachment the watcher added last, so a new copy can replace it. */
+  const autoAttachedRef = useRef("");
+
   const addAttachments = useCallback((imgs: MessageImage[], note?: string) => {
     if (imgs.length === 0) return;
     setAttachments((prev) => [...prev, ...imgs]);
@@ -255,15 +265,30 @@ export function App() {
     );
   }, []);
 
-  /** Attach an image from a file path (used by `/paste <path>` and drag-drop). */
-  const addImagePath = useCallback(
-    (path: string): boolean => {
-      const img = readImageFile(path);
-      if (!img) return false;
-      addAttachments([{ ...img, name: fileName(path) }]);
-      return true;
+  /**
+   * Attach images from a path the user typed: a single file, a folder of
+   * screenshots (newest first) or a wildcard such as `C:\shots\*.png`.
+   */
+  const attachImageArg = useCallback(
+    (arg: string): { count: number; error?: string } => {
+      const files = expandImagePath(arg, settings.workingDir);
+      const imgs: MessageImage[] = [];
+      for (const path of files) {
+        const img = readImageFile(path);
+        if (img) imgs.push({ ...img, name: fileName(path) });
+      }
+      if (imgs.length === 0) {
+        return {
+          count: 0,
+          error: imageMimeFor(arg) || /[*?]/.test(arg)
+            ? `no readable image at ${arg}`
+            : `not an image file or folder: ${arg}`,
+        };
+      }
+      addAttachments(imgs);
+      return { count: imgs.length };
     },
-    [addAttachments],
+    [addAttachments, settings.workingDir],
   );
 
   const attachFromClipboard = useCallback(
@@ -273,6 +298,12 @@ export function App() {
       // 1. A bitmap on the clipboard (screenshots from Win+Shift+S, etc.).
       const img = await readClipboardImage();
       if (img) {
+        const fingerprint = `${img.data.length}:${img.data.slice(0, 64)}`;
+        if (fingerprint === lastClipboardRef.current) {
+          setNotice("that clipboard image is already attached");
+          return;
+        }
+        lastClipboardRef.current = fingerprint;
         addAttachments([{ ...img, name: `clipboard-${attachments.length + 1}.png` }]);
         return;
       }
@@ -308,6 +339,36 @@ export function App() {
     },
     [addAttachments, attachments.length, setInput],
   );
+
+  // ── clipboard watcher (Windows) ──────────────────────────────────────────
+  // Windows Terminal and the VS Code terminal swallow Ctrl+V for their own text
+  // paste, so the bitmap never reaches the app. Watch the clipboard instead and
+  // attach a freshly copied screenshot automatically. `/watch off` disables it.
+  useEffect(() => {
+    if (settings.clipboardWatch === false) return;
+    const watcher = startClipboardWatch((img) => {
+      if (screenRef.current !== "chat") return;
+      // Re-copies of the same bitmap should not stack up duplicates.
+      const fingerprint = `${img.data.length}:${img.data.slice(0, 64)}`;
+      if (fingerprint === lastClipboardRef.current) return;
+      lastClipboardRef.current = fingerprint;
+
+      const name = `clipboard-${Date.now()}.png`;
+      setAttachments((prev) => {
+        const next = [...prev];
+        // Consecutive copies replace each other rather than piling up; anything
+        // the user attached by hand in between is left untouched.
+        if (autoAttachedRef.current && next[next.length - 1]?.name === autoAttachedRef.current) {
+          next.pop();
+        }
+        next.push({ ...img, name });
+        return next;
+      });
+      autoAttachedRef.current = name;
+      setNotice("📋 clipboard image attached — /drop to remove");
+    });
+    return () => watcher.stop();
+  }, [settings.clipboardWatch]);
 
   const persist = useCallback(
     (id: string, msgs: Message[]) => {
@@ -644,28 +705,35 @@ export function App() {
         case "/paste":
         case "/image":
           if (arg) {
-            if (addImagePath(arg)) {
-              // notice handled by addImagePath
-            } else if (imageMimeFor(arg)) {
-              setNotice(`couldn't read image: ${arg}`);
-            } else {
-              setNotice(`not an image file: ${arg}`);
-            }
+            const result = attachImageArg(arg);
+            if (result.error) setNotice(result.error);
           } else {
             void attachFromClipboard(false);
           }
           break;
         case "/file":
           if (!arg) {
-            setNotice("usage: /file <path> — attach an image file");
-          } else if (!addImagePath(arg)) {
-            setNotice(`couldn't attach: ${arg}`);
+            setNotice("usage: /file <path> — attach an image file, folder or wildcard");
+          } else {
+            const result = attachImageArg(arg);
+            if (result.error) setNotice(result.error);
           }
           break;
         case "/drop":
           setAttachments([]);
           setNotice("attachments cleared");
           break;
+        case "/watch": {
+          const next =
+            arg === "on" ? true : arg === "off" ? false : settings.clipboardWatch === false;
+          patchSettings({ clipboardWatch: next });
+          setNotice(
+            next
+              ? "clipboard watch on — copy a screenshot and it attaches automatically"
+              : "clipboard watch off — use /paste or alt+v to attach",
+          );
+          break;
+        }
         case "/sessions":
           setSidebar((s) => !s);
           break;
@@ -736,7 +804,7 @@ export function App() {
       activeId,
       agents,
       attachFromClipboard,
-      addImagePath,
+      attachImageArg,
       exit,
       loadModels,
       newSession,
@@ -852,13 +920,14 @@ export function App() {
         setSidebarFocus(false);
         return;
       }
-      if (key.ctrl && value === "v") {
+      // Ctrl+V (and Ctrl+Shift+V in terminals that only capture the plain one).
+      if (key.ctrl && (value === "v" || value === "V")) {
         void attachFromClipboard(false);
         return;
       }
       // Alt+V too: many terminals hand Ctrl+V to their own paste handler, so
       // this gives a binding that reliably reaches the app.
-      if (key.meta && value === "v") {
+      if (key.meta && (value === "v" || value === "V")) {
         void attachFromClipboard(false);
         return;
       }

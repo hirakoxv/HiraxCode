@@ -1,7 +1,7 @@
 import { platform } from "os";
-import { existsSync, readFileSync, rmSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "fs";
 import { tmpdir } from "os";
-import { basename, join } from "path";
+import { basename, dirname, isAbsolute, join, resolve } from "path";
 import { nanoid } from "nanoid";
 import { logger } from "./logger";
 import { spawn, which } from "./runtime";
@@ -212,6 +212,69 @@ export function imagesInText(
 /** Display name for a file path (used as an attachment label). */
 export function fileName(file: string): string {
   return basename(file) || file;
+}
+
+/** Turn a shell-style wildcard (`*.png`, `shot-?.jpg`) into an anchored regex. */
+function wildcard(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+/**
+ * Image files directly inside `dir`, newest first — the screenshot you just
+ * saved is almost always the one you want.
+ */
+export function listImageFiles(dir: string, max = 12, match?: RegExp): string[] {
+  try {
+    const found: Array<{ path: string; mtime: number }> = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !imageMimeFor(entry.name)) continue;
+      if (match && !match.test(entry.name)) continue;
+      const path = join(dir, entry.name);
+      let mtime = 0;
+      try {
+        mtime = statSync(path).mtimeMs;
+      } catch {}
+      found.push({ path, mtime });
+    }
+    found.sort((a, b) => b.mtime - a.mtime || a.path.localeCompare(b.path));
+    return found.slice(0, max).map((f) => f.path);
+  } catch (e) {
+    logger.debug("listImageFiles failed", e);
+    return [];
+  }
+}
+
+/**
+ * Resolve whatever the user typed into image files on disk:
+ *
+ * - a file          `C:\shots\bug.png`      → that file
+ * - a folder        `C:\shots`              → every image directly inside, newest first
+ * - a wildcard      `C:\shots\*.png`        → every match, capped
+ *
+ * Relative paths resolve against `cwd`. Returns an empty array when nothing
+ * matches or the path is not an image.
+ */
+export function expandImagePath(arg: string, cwd = process.cwd(), max = 12): string[] {
+  const raw = arg.trim().replace(/^["']+|["']+$/g, "");
+  if (!raw) return [];
+  const target = isAbsolute(raw) ? raw : resolve(cwd, raw);
+
+  if (/[*?]/.test(basename(raw))) {
+    return listImageFiles(dirname(target), max, wildcard(basename(raw)));
+  }
+
+  try {
+    const st = statSync(target);
+    if (st.isDirectory()) return listImageFiles(target, max);
+    if (st.isFile()) return imageMimeFor(target) ? [target] : [];
+  } catch (e) {
+    logger.debug("expandImagePath failed", e);
+  }
+  return [];
 }
 
 const PS_FILES = [

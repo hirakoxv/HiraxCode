@@ -15,6 +15,9 @@ process.env.WORKING_DIR = process.cwd();
 process.env.DEBUG = "false";
 // Never hit models.dev (or write its cache) during tests.
 process.env.HIRAX_NO_REFRESH = "1";
+// Tests must not spawn the Windows clipboard watcher (it is a long-lived
+// background process that would keep the test runner alive).
+process.env.HIRAX_NO_CLIPBOARD_WATCH = "1";
 
 // Start from a clean slate — individual tests opt in to what they need.
 for (const key of [

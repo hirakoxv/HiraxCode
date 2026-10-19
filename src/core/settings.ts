@@ -63,6 +63,12 @@ export interface Settings {
   minimal: boolean;
   /** compact transcript density */
   compact: boolean;
+  /**
+   * Watch the OS clipboard and attach freshly copied screenshots automatically.
+   * Only useful (and only active) on Windows, where terminals swallow Ctrl+V.
+   * `false` disables it; undefined means "on".
+   */
+  clipboardWatch?: boolean;
 }
 
 export const ACCENTS = [
